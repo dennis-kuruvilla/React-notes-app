@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import Note from './components/Note'
+import Notification from './components/Notification'
+import LoginForm from './components/LoginForm'
+import NoteForm from './components/NoteForm'
+import Togglable from './components/Togglable'
 import noteService from './services/notes'
+import loginService from './services/login' 
 
 
 
@@ -35,6 +40,14 @@ const App = () => {
   const [notes, setNotes] = useState([])
   const [newNote, setNewNote] = useState('') 
   const [showAll, setShowAll] = useState(true)
+  const [errorMessage, setErrorMessage] = useState(null)
+
+  const [username, setUsername] = useState('') 
+  const [password, setPassword] = useState('') 
+
+  const [user, setUser] = useState(null)
+
+  const noteFormRef = useRef()
 
   useEffect(() => {
     noteService
@@ -44,32 +57,52 @@ const App = () => {
     })
   }, [])
 
+  //we can have multiple effet hooks
+  useEffect(() => {
+    const loggedUserJSON = window.localStorage.getItem('loggedNoteappUser')
+    if (loggedUserJSON) {
+      const user = JSON.parse(loggedUserJSON)
+      setUser(user)
+      noteService.setToken(user.token)
+    }
+  }, [])
+
+
 
   const notesToShow = showAll
     ? notes
     : notes.filter(note => note.important === true)
 
-  //Event Handler for button to add note
-  const addNote = (event) => {
-    event.preventDefault() //prevents the default action of submitting a form. The default action would, among other things, cause the page to reload.
-    console.log('button clicked', event.target)
-    const noteObject = {
-      content: newNote,
-      date: new Date().toISOString(),
-      important: Math.random() < 0.5,
-      //id: notes.length + 1,    not adding id since id will be automatically populated when the object is added to json server
-    }
+  // //Event Handler for button to add note
+  // const addNote = (event) => {
+  //   event.preventDefault() //prevents the default action of submitting a form. The default action would, among other things, cause the page to reload.
+  //   console.log('button clicked', event.target)
+  //   const noteObject = {
+  //     content: newNote,
+  //     date: new Date().toISOString(),
+  //     important: Math.random() < 0.5,
+  //     //id: notes.length + 1,    not adding id since id will be automatically populated when the object is added to json server
+  //   }
     
+  //   noteService
+  //     .create(noteObject)
+  //       .then(returnedNote => {
+  //       setNotes(notes.concat(returnedNote))
+  //       setNewNote('')
+  //     })
+
+  //   //following 2 lines of code is to add the user entered string to the notes array defined above. replaced it by updating the data in json server
+  //   // setNotes(notes.concat(response.data))
+  //   // setNewNote('')
+  // }
+
+  const addNote = (noteObject) => {
+    noteFormRef.current.toggleVisibility()
     noteService
       .create(noteObject)
-        .then(returnedNote => {
+      .then(returnedNote => {
         setNotes(notes.concat(returnedNote))
-        setNewNote('')
       })
-
-    //following 2 lines of code is to add the user entered string to the notes array defined above. replaced it by updating the data in json server
-    // setNotes(notes.concat(response.data))
-    // setNewNote('')
   }
 
   const toggleImportanceOf = id => {
@@ -95,9 +128,65 @@ const App = () => {
     setNewNote(event.target.value)
   }
 
+  const handleLogin = async (event) => {
+    event.preventDefault()
+    console.log('logging in with', username, password)
+
+    try {
+      const user = await loginService.login({
+        username, password,
+      })
+
+      window.localStorage.setItem(
+        'loggedNoteappUser', JSON.stringify(user)
+      ) 
+
+      noteService.setToken(user.token)
+      setUser(user)
+      console.log(user)
+      setUsername('')
+      setPassword('')
+    } catch (exception) {
+      setErrorMessage('Wrong credentials')
+      setTimeout(() => {
+        setErrorMessage(null)
+      }, 5000)
+    }
+  }
+
+
+  const loginForm = () => (
+    <Togglable buttonLabel="log in">
+      <LoginForm
+        username={username}
+        password={password}
+        handleUsernameChange={({ target }) => setUsername(target.value)}
+        handlePasswordChange={({ target }) => setPassword(target.value)}
+        handleSubmit={handleLogin}
+      />
+    </Togglable>
+  )
+
+  const noteForm = () => (
+    <Togglable buttonLabel='new note' ref={noteFormRef}>
+      <NoteForm createNote={addNote} />
+    </Togglable>
+  )
+
   return (
     <div>
       <h1>Notes</h1>
+      <Notification message={errorMessage} />
+
+      {user === null ?
+      loginForm() :
+      <div>
+        <p>{user.name} logged-in</p>
+        {noteForm()}
+      </div>
+      }
+
+      
       <div>
         <button onClick={() => setShowAll(!showAll)}>
           show {showAll ? 'important' : 'all' }
@@ -108,10 +197,7 @@ const App = () => {
             <Note key={note.id} note={note} toggleImportance={() => toggleImportanceOf(note.id)} />
         )}
       </ul>
-      <form onSubmit={addNote}>
-        <input value={newNote} onChange={handleNoteChange} />
-        <button type="submit">save</button>
-      </form>   
+      
     </div>
   )
 }
